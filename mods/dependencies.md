@@ -78,36 +78,47 @@ If you now go to compile and test your mod, everything should work out-of-the-bo
 
 In case the dependency is **not required**, it is not linked to, which in turn means that you can't use any of its exported functions. In cases like these, the dependency should provide ways through Geode to dynamically call its functions, such as through events.
 
-### Events
+## Events
 
 The key system Geode provides for optional mod interop are events. For example, a mod that adds support for drag-and-dropping files on the GD window could define a drag-and-drop event that other mods can then listen to.
 
 Usually however, events are defined in code in a way that requires linking by inheriting from the `Event` class. To avoid this, mods that want to support being used optionally should also provide events that are specializations of the `DispatchEvent` class:
 
 ```cpp
-using DragDropEvent = geode::DispatchEvent<ghc::filesystem::path>;
-using DragDropFilter = geode::DispatchFilter<ghc::filesystem::path>;
+#include <Geode/loader/Dispatch.hpp>
+using ExampleEvent = geode::DispatchEvent<type>;
 
-// Posting events in source
-DragDropEvent("geode.drag-drop/default", "path/to/file").post();
+template <class>
+struct ToFilterImpl;
+
+template <class... Args>
+struct ToFilterImpl<geode::DispatchEvent<Args...>> {
+	using type = geode::DispatchFilter <Args...>;
+};
+
+template <class T>
+using ToFilter = typename ToFilterImpl<T>::type;
+
+$execute {
+    new EventListener(+[](type name) {
+        code...
+        return ListenerResult::Stop;
+    }, ToFilter<ExampleEvent>("mod.id/EventName));
+}
 ```
 
-All `DispatchEvent`s have an associated ID, which is specific for each `DispatchEvent` specialization. This can be used to differentiate between events; for example, the drag drop API might use this to let dependencies determine which file types they listen to.
+All `DispatchEvent`s have an associated ID, which is specific for each `DispatchEvent` specialization. This can be used to differentiate between events; for example, a drag drop API might use this to let dependencies determine which file types they listen to.
 
-Mods that use the dependency can now listen for drag-and-drop events:
+Mods that wish to use the dependency can now post events:
 
 ```cpp
-$execute {
-    new EventListener(+[](ghc::filesystem::path const& path) {
-        log::info("File dropped: {}", path);
-        return ListenerResult::Propagate;
-    }, DragDropFilter("geode.drag-drop/default"));
-};
+#include<Geode/loader/Dispatch.hpp>
+DispatchEvent<type>("mod.id/EventName", value).post();
 ```
 
-An example of using dispatch events in practice [can be found in MouseAPI](https://github.com/geode-sdk/MouseAPI/blob/main/src/test.cpp#L54-L94).
+An example of using dispatch events in practice [can be found in Texture Loader](https://github.com/geode-sdk/textureldr/commit/578d855a63a55525ab5ef29ce492a5eaf232fe4f). Look at line 28 of include/TextureLoader.hpp, and lines 35-40 of src/API.cpp on the linked commit version (this might change in future versions). 
 
-### Attributes
+## Attributes
 
 One way for mods to communicate with optional dependencies is through **node attributes**, which may contain any data. These are like the `setUserData` and `setUserObject` functions native to `CCNode`s, except that attributes have a string key associated with them. For example, a mod that adds scrollbars to layers might use the following check to see if a scrollbar should be added to a layer:
 
